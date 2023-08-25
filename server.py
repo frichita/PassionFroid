@@ -75,24 +75,31 @@ def upload_image():
 
     if not image:
         return jsonify({'error': 'No image provided'}), 400
+    
+    image_filename = secure_filename(image.filename)
+    
+    # Check if blob already exists
+    blob_client = BLOB_SERVICE.get_blob_client(container=CONTAINER_NAME, blob=image_filename)
+    if blob_client.exists():
+        return jsonify({'error': 'Image already exists'}), 409
 
-    # Enregistrement de l'image
-    image_path = os.path.join(UPLOAD_FOLDER, secure_filename(image.filename))
+    # Save the image
+    image_path = os.path.join(UPLOAD_FOLDER, image_filename)
     image.save(image_path)
 
     # Upload to Azure Blob Storage
-    blob_client = BLOB_SERVICE.get_blob_client(container=CONTAINER_NAME, blob=secure_filename(image.filename))
     with open(image_path, "rb") as data:
         blob_client.upload_blob(data)
     blob_url = blob_client.url
     
-    # Supprimer l'image locale après l'envoi
+    # Delete local image after upload
     os.remove(image_path)
 
-    # Insertion des données dans MongoDB
+    # Insert data into MongoDB
     data = {
-        'image_path': blob_url,   # Utilisez l'URL du blob au lieu du chemin local
-        'other_field': other_field
+        'image_path': blob_url,  # Use the blob URL instead of the local path
+        'other_field': other_field,
+        'meta_description': other_field  # Adding the "other_field" to meta description
     }
     mongo.db.images.insert_one(data)
 
