@@ -93,6 +93,29 @@ def delete_image(blob_name):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/search', methods=['GET'])
+def search_images():
+    query = request.args.get('q', '')
+    
+    if not query:
+        return jsonify({'error': 'No query provided'}), 400
+    
+    # Recherche dans MongoDB en utilisant des expressions régulières (regex)
+    images_data = mongo.db.images.find({"tags": {"$regex": query, "$options": 'i'}})
+    
+    image_list = []
+
+    for image_data in images_data:
+        image_dict = {
+            "image_path": image_data['image_path'],
+            "tags": image_data.get('tags', []),
+            "meta_description": image_data.get('meta_description', '')
+        }
+        image_list.append(image_dict)
+    
+    return jsonify({'images': image_list})
+
+
 @app.route('/upload', methods=['POST'])
 def upload_image():
     image = request.files.get('image')
