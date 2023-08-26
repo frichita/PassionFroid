@@ -7,20 +7,23 @@ from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
 from azure.cognitiveservices.vision.computervision import ComputerVisionClient
 from azure.cognitiveservices.vision.computervision.models import VisualFeatureTypes
 from msrest.authentication import CognitiveServicesCredentials
+from dotenv import load_dotenv
 import os
 import io
+
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 ACCOUNT_NAME = 'passionfroid'
-ACCOUNT_KEY = 'HuL6tfRJysTzKJDgo0YG/ML6M1UYJMdmFUEHUEvobVrB6SesnqJPkvAfq/6W7/mN+NfTl1V/5mIo+AStuFfDWg=='
+ACCOUNT_KEY = os.getenv('ACCOUNT_KEY')
 CONTAINER_NAME = 'passion-froid'
 BLOB_SERVICE = BlobServiceClient(account_url=f"https://{ACCOUNT_NAME}.blob.core.windows.net", credential=ACCOUNT_KEY)
 CONTAINER_CLIENT = BLOB_SERVICE.get_container_client(CONTAINER_NAME)
 
-SUBSCRIPTION_KEY = "472be19f-4437-4866-9a98-938aa71fd15e"
-ENDPOINT = "aacfabf84826411baf568cbad2c51c4a"
+SUBSCRIPTION_KEY = os.getenv('SUBSCRIPTION_KEY')
+ENDPOINT = os.getenv('ENDPOINT')
 
 computervision_client = ComputerVisionClient(ENDPOINT, CognitiveServicesCredentials(SUBSCRIPTION_KEY))
 
