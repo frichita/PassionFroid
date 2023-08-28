@@ -19,12 +19,10 @@ CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 ACCOUNT_NAME = 'passionfroid'
 ACCOUNT_KEY = os.getenv('ACCOUNT_KEY')
-ENDPOINT = os.getenv('ENDPOINT')
 CONTAINER_NAME = 'passion-froid'
 BLOB_SERVICE = BlobServiceClient(account_url=f"https://{ACCOUNT_NAME}.blob.core.windows.net", credential=ACCOUNT_KEY)
 CONTAINER_CLIENT = BLOB_SERVICE.get_container_client(CONTAINER_NAME)
 
-print(ENDPOINT)
 SUBSCRIPTION_KEY = os.getenv('SUBSCRIPTION_KEY')
 ENDPOINT = os.getenv('ENDPOINT')
 
@@ -58,6 +56,30 @@ def show_images():
     # Retourne une réponse JSON
     return jsonify({'images': image_list})
 
+@app.route('/update/<blob_name>', methods=['POST'])
+def update_image(blob_name):
+    try:
+        image = request.files.get('image')
+
+        if not image:
+            return jsonify({'error': 'No image provided'}), 400
+
+        # Suppression de l'ancien blob
+        old_blob_client = BLOB_SERVICE.get_blob_client(container=CONTAINER_NAME, blob=blob_name)
+        old_blob_client.delete_blob()
+
+        # Upload de la nouvelle image
+        new_blob_client = BLOB_SERVICE.get_blob_client(container=CONTAINER_NAME, blob=secure_filename(image.filename))
+        new_blob_client.upload_blob(image.read())
+        new_blob_url = new_blob_client.url
+
+        # Mise à jour dans MongoDB
+        mongo.db.images.update_one({'image_path': old_blob_client.url}, {'$set': {'image_path': new_blob_url}})
+
+        return jsonify({'message': new_blob_url}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/delete/<blob_name>', methods=['DELETE'])
 def delete_image(blob_name):
@@ -78,27 +100,16 @@ def delete_image(blob_name):
 def rename_blob(old_blob_name):
     new_name = request.form.get("new_name")
 
-    # Generate the old and new blob URLs
-    old_blob_url = f"https://{ACCOUNT_NAME}.blob.core.windows.net/{CONTAINER_NAME}/{old_blob_name}"
-    new_blob_url = f"https://{ACCOUNT_NAME}.blob.core.windows.net/{CONTAINER_NAME}/{new_name}"
+    # Récupération de la connexion Azure Blob
+    blob_service_client = BlobServiceClient.from_connection_string("your_connection_string_here")
+    blob_client = blob_service_client.get_blob_client(container="passion-froid", blob=old_blob_name)
 
-    # Get a BlobClient for the old blob
-    old_blob_client = BLOB_SERVICE.get_blob_client(container=CONTAINER_NAME, blob=old_blob_name)
+    # Renommage du fichier dans Azure Storage en le copiant et en supprimant l'original
+    blob_service_client.get_blob_client(container="passion-froid", blob=new_name).start_copy_from_url(blob_client.url)
+    blob_client.delete_blob()
 
-    # Start copying the blob to a new blob with the new name
-    new_blob_client = BLOB_SERVICE.get_blob_client(container=CONTAINER_NAME, blob=new_name)
-    new_blob_client.start_copy_from_url(old_blob_client.url)
-
-    # Delete the old blob
-    old_blob_client.delete_blob()
-
-    # Update the MongoDB database
-    update_result = mongo.db.images.update_one(
-        {'image_path': old_blob_url},
-        {'$set': {'image_path': new_blob_url}}
-    )
-
-    if update_result.modified_count > 0:
+    # Mise à jour du nom du fichier dans la base de données
+    if database_module.update_image_name(old_blob_name, new_name):
         return jsonify({"status": "success"}), 200
     else:
         return jsonify({"status": "failure"}), 400
@@ -154,7 +165,7 @@ def upload_image():
     # On initialise Azure Cognitive Services client
     computervision_client = ComputerVisionClient(
         "https://passion-froid-vision.cognitiveservices.azure.com/",
-        CognitiveServicesCredentials(ENDPOINT)
+        CognitiveServicesCredentials("aacfabf84826411baf568cbad2c51c4a")
     )
     
     # Analyze image using Azure Computer Vision API
