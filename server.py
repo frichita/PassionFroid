@@ -7,8 +7,10 @@ from flask_cors import CORS
 from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
 from azure.cognitiveservices.vision.computervision import ComputerVisionClient
 from azure.cognitiveservices.vision.computervision.models import VisualFeatureTypes
+from werkzeug.datastructures import FileStorage
 from msrest.authentication import CognitiveServicesCredentials
 from dotenv import load_dotenv
+from bson import ObjectId
 import os
 import io
 
@@ -47,14 +49,37 @@ def show_images():
 
     for image_data in images_data:
         image_dict = {
+            "_id": image_data["_id"],  # Inclure l'ID
             "image_path": image_data['image_path'],
             "tags": image_data.get('tags', []),
-            "meta_description": image_data.get('meta_description', '')
+            "meta_description": image_data.get('meta_description', ''),
+            "nbRecherche": image_data.get('nbRecherche', 0)  # Inclure nbRecherche, 0 par défaut
         }
         image_list.append(image_dict)
 
     # Retourne une réponse JSON
     return jsonify({'images': image_list})
+
+@app.route('/increment-nb-recherche/<int:image_id>', methods=['PUT'])
+def increment_nb_recherche(image_id):
+    try:
+        # Récupérer l'image à partir de la base de données en utilisant l'ID
+        image = mongo.db.images.find_one({'_id': image_id})
+
+        if image is None:
+            return jsonify({'error': 'Image not found'}), 404
+
+        # Incrémenter nbRecherche
+        new_nb_recherche = image['nbRecherche'] + 1
+
+        # Mettre à jour nbRecherche dans la base de données
+        mongo.db.images.update_one({'_id': image_id}, {'$set': {'nbRecherche': new_nb_recherche}})
+
+        return jsonify({'message': 'nbRecherche incremented successfully'}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 
 @app.route('/delete/<blob_name>', methods=['DELETE'])
@@ -72,25 +97,33 @@ def delete_image(blob_name):
 
 # La route pour rename un nom de fichier 
 @app.route("/rename/<old_blob_name>", methods=["POST"])
-# La fonction de renommage d'une image de la base de données et de Azure Storage
 def rename_blob(old_blob_name):
     new_name = request.form.get("new_name")
+    
+    # Extract the file extension from the old name
+    file_extension = old_blob_name.split('.')[-1]
 
-    # Generation  des anciens et nouveaux blobs
+    # Generate the new blob name with the same file extension
+    new_blob_name = f"{new_name}.{file_extension}"
+
+    # Generate the full URLs for old and new blobs
     old_blob_url = f"https://{ACCOUNT_NAME}.blob.core.windows.net/{CONTAINER_NAME}/{old_blob_name}"
-    new_blob_url = f"https://{ACCOUNT_NAME}.blob.core.windows.net/{CONTAINER_NAME}/{new_name}"
+    new_blob_url = f"https://{ACCOUNT_NAME}.blob.core.windows.net/{CONTAINER_NAME}/{new_blob_name}"
 
-    # Mise en place d'un client pour l'ancien blob
+    # Create a secure filename for the new blob name
+    new_blob_name = secure_filename(new_blob_name)
+
+    # Set up clients for the old and new blobs
     old_blob_client = BLOB_SERVICE.get_blob_client(container=CONTAINER_NAME, blob=old_blob_name)
+    new_blob_client = BLOB_SERVICE.get_blob_client(container=CONTAINER_NAME, blob=new_blob_name)
 
-    # Copie du nouveau nom dans le blob
-    new_blob_client = BLOB_SERVICE.get_blob_client(container=CONTAINER_NAME, blob=new_name)
+    # Start copying the old blob's content to the new blob
     new_blob_client.start_copy_from_url(old_blob_client.url)
 
-    # Suppression de l'ancien blob
+    # Delete the old blob
     old_blob_client.delete_blob()
 
-    # Mise à jour dans MongoDB
+    # Update the image path in MongoDB
     update_result = mongo.db.images.update_one(
         {'image_path': old_blob_url},
         {'$set': {'image_path': new_blob_url}}
@@ -101,32 +134,7 @@ def rename_blob(old_blob_name):
     else:
         return jsonify({"status": "failure"}), 400
 
-
-# La route de recherche
-@app.route('/search', methods=['GET'])
-# La fonction qui recherche les tags des images
-def search_images():
-    query = request.args.get('q', '')
-    
-    if not query:
-        return jsonify({'error': 'No query provided'}), 400
-    
-    # Recherche dans MongoDB en utilisant un regex
-    images_data = mongo.db.images.find({"tags": {"$regex": query, "$options": 'i'}})
-    
-    image_list = []
-
-    for image_data in images_data:
-        image_dict = {
-            "image_path": image_data['image_path'],
-            "tags": image_data.get('tags', []),
-            "meta_description": image_data.get('meta_description', '')
-        }
-        image_list.append(image_dict)
-    
-    return jsonify({'images': image_list})
-
-# La route pour upload l'image dans Azure Storage et sur MongoDB
+# La route pour upload l'image dans Azure Storage et sur MongoDB 
 @app.route('/upload', methods=['POST'])
 def upload_image():
     image = request.files.get('image')
@@ -168,14 +176,16 @@ def upload_image():
 
     # On insert les données dans la base de données avec la nouvelle clé primaire
     data = {
-        '_id': new_image_id,  # Nouvelle clé primaire incrémentée
+        '_id': new_image_id,
         'image_path': blob_url,
         'tags': tags,
-        'meta_description': description
+        'meta_description': description,
+        'nbRecherche': 0,  # Initialise nbRecherche à 0
     }
     mongo.db.images.insert_one(data)
 
     return jsonify({'message': 'Success'}), 200
+
 
 def increment_image_id():
     # Incrémente la séquence et retourne la nouvelle valeur
