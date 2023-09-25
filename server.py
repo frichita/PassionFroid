@@ -17,14 +17,12 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
-ACCOUNT_NAME = 'passionfroid'
+ACCOUNT_NAME = 'passionfroid1'
 ACCOUNT_KEY = os.getenv('ACCOUNT_KEY')
-ENDPOINT = os.getenv('ENDPOINT')
-CONTAINER_NAME = 'passion-froid'
+CONTAINER_NAME = 'passionfroid1'
 BLOB_SERVICE = BlobServiceClient(account_url=f"https://{ACCOUNT_NAME}.blob.core.windows.net", credential=ACCOUNT_KEY)
 CONTAINER_CLIENT = BLOB_SERVICE.get_container_client(CONTAINER_NAME)
 
-print(ENDPOINT)
 SUBSCRIPTION_KEY = os.getenv('SUBSCRIPTION_KEY')
 ENDPOINT = os.getenv('ENDPOINT')
 
@@ -78,21 +76,21 @@ def delete_image(blob_name):
 def rename_blob(old_blob_name):
     new_name = request.form.get("new_name")
 
-    # Generate the old and new blob URLs
+    # Generation  des anciens et nouveaux blobs
     old_blob_url = f"https://{ACCOUNT_NAME}.blob.core.windows.net/{CONTAINER_NAME}/{old_blob_name}"
     new_blob_url = f"https://{ACCOUNT_NAME}.blob.core.windows.net/{CONTAINER_NAME}/{new_name}"
 
-    # Get a BlobClient for the old blob
+    # Mise en place d'un client pour l'ancien blob
     old_blob_client = BLOB_SERVICE.get_blob_client(container=CONTAINER_NAME, blob=old_blob_name)
 
-    # Start copying the blob to a new blob with the new name
+    # Copie du nouveau nom dans le blob
     new_blob_client = BLOB_SERVICE.get_blob_client(container=CONTAINER_NAME, blob=new_name)
     new_blob_client.start_copy_from_url(old_blob_client.url)
 
-    # Delete the old blob
+    # Suppression de l'ancien blob
     old_blob_client.delete_blob()
 
-    # Update the MongoDB database
+    # Mise à jour dans MongoDB
     update_result = mongo.db.images.update_one(
         {'image_path': old_blob_url},
         {'$set': {'image_path': new_blob_url}}
@@ -153,7 +151,7 @@ def upload_image():
     
     # On initialise Azure Cognitive Services client
     computervision_client = ComputerVisionClient(
-        "https://passion-froid-vision.cognitiveservices.azure.com/",
+        "https://passionfroid.cognitiveservices.azure.com/",
         CognitiveServicesCredentials(ENDPOINT)
     )
     
