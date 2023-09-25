@@ -49,14 +49,11 @@ def show_images():
     # Récupérer les données depuis MongoDB en fonction des paramètres de tri
     if sort_by == 'name':
         images_data = mongo.db.images.find({"image_path": {"$in": blob_urls}}).sort("image_path", order)
-        print("2")
     elif sort_by == 'nbRecherche':
         images_data = mongo.db.images.find({"image_path": {"$in": blob_urls}}).sort("nbRecherche", order)
-        print("1")
     else:
         # Par défaut, triez par nom du fichier
         images_data = mongo.db.images.find({"image_path": {"$in": blob_urls}}).sort("image_path", order)
-        print("3")
 
     image_list = []
 
@@ -150,54 +147,61 @@ def rename_blob(old_blob_name):
 # La route pour upload l'image dans Azure Storage et sur MongoDB 
 @app.route('/upload', methods=['POST'])
 def upload_image():
-    image = request.files.get('image')
+    images = request.files.getlist('images')  # Utilisez getlist pour obtenir une liste d'images
 
-    if not image:
-        return jsonify({'error': 'No image provided'}), 400
-    
-    image_filename = secure_filename(image.filename)
-    
-    # On check si le blob existe :
-    blob_client = BLOB_SERVICE.get_blob_client(container=CONTAINER_NAME, blob=image_filename)
-    if blob_client.exists():
-        return jsonify({'error': 'Image already exists'}), 409
+    if not images:
+        return jsonify({'error': 'No images provided'}), 400
 
-    # On lit l'image
-    image_bytes = image.read()
+    success_messages = []  # Liste pour stocker les messages de succès
 
-    # on upload dans Azure 
-    blob_client.upload_blob(image_bytes)
-    blob_url = blob_client.url
-    
-    # On génère la nouvelle clé primaire
-    new_image_id = increment_image_id()
+    for image in images:
+        image_filename = secure_filename(image.filename)
 
-    # On initialise Azure Cognitive Services client
-    computervision_client = ComputerVisionClient(
-        "https://passionfroid.cognitiveservices.azure.com/",
-        CognitiveServicesCredentials(ENDPOINT)
-    )
-    
-    # Analyze image using Azure Computer Vision API
-    image_analysis = computervision_client.analyze_image_in_stream(
-        io.BytesIO(image_bytes),
-        visual_features=[VisualFeatureTypes.tags, VisualFeatureTypes.description]
-    )
-    
-    tags = [tag.name for tag in image_analysis.tags]
-    description = image_analysis.description.captions[0].text if image_analysis.description.captions else ""
+        # Vérifiez si le blob existe
+        blob_client = BLOB_SERVICE.get_blob_client(container=CONTAINER_NAME, blob=image_filename)
+        if blob_client.exists():
+            return jsonify({'error': f'Image {image_filename} already exists'}), 409
 
-    # On insert les données dans la base de données avec la nouvelle clé primaire
-    data = {
-        '_id': new_image_id,
-        'image_path': blob_url,
-        'tags': tags,
-        'meta_description': description,
-        'nbRecherche': 0,  # Initialise nbRecherche à 0
-    }
-    mongo.db.images.insert_one(data)
+        # Lisez l'image
+        image_bytes = image.read()
 
-    return jsonify({'message': 'Success'}), 200
+        # Chargez l'image dans Azure
+        blob_client.upload_blob(image_bytes)
+        blob_url = blob_client.url
+
+        # Générez la nouvelle clé primaire
+        new_image_id = increment_image_id()
+
+        # Initialisez le client Azure Cognitive Services
+        computervision_client = ComputerVisionClient(
+            "https://passionfroid.cognitiveservices.azure.com/",
+            CognitiveServicesCredentials(ENDPOINT)
+        )
+
+        # Analysez l'image à l'aide de l'API Azure Computer Vision
+        image_analysis = computervision_client.analyze_image_in_stream(
+            io.BytesIO(image_bytes),
+            visual_features=[VisualFeatureTypes.tags, VisualFeatureTypes.description]
+        )
+
+        tags = [tag.name for tag in image_analysis.tags]
+        description = image_analysis.description.captions[0].text if image_analysis.description.captions else ""
+
+        # Insérez les données dans la base de données avec la nouvelle clé primaire
+        data = {
+            '_id': new_image_id,
+            'image_path': blob_url,
+            'tags': tags,
+            'meta_description': description,
+            'nbRecherche': 0,  # Initialisez nbRecherche à 0
+        }
+        mongo.db.images.insert_one(data)
+
+        success_messages.append(f'Image {image_filename} uploaded successfully')
+
+    # Retournez un message de succès global
+    return jsonify({'message': success_messages}), 200
+
 
 
 def increment_image_id():
