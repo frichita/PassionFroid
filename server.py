@@ -38,13 +38,26 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 @app.route('/gallery', methods=['GET'])
 def show_images():
+    # Récupérer les paramètres de tri depuis la requête
+    sort_by = request.args.get('sort_by', 'name')  # Par défaut, triez par nom du fichier
+    order = int(request.args.get('order', 1))  # Par défaut, triez par ordre croissant
+
     # Récupérer les noms de tous les blobs du conteneur
     blob_list = CONTAINER_CLIENT.list_blobs()
     blob_urls = [f"https://{ACCOUNT_NAME}.blob.core.windows.net/{CONTAINER_NAME}/{blob.name}" for blob in blob_list]
 
-    # Récupérer les données depuis MongoDB
-    images_data = mongo.db.images.find({"image_path": {"$in": blob_urls}})
-    
+    # Récupérer les données depuis MongoDB en fonction des paramètres de tri
+    if sort_by == 'name':
+        images_data = mongo.db.images.find({"image_path": {"$in": blob_urls}}).sort("image_path", order)
+        print("2")
+    elif sort_by == 'nbRecherche':
+        images_data = mongo.db.images.find({"image_path": {"$in": blob_urls}}).sort("nbRecherche", order)
+        print("1")
+    else:
+        # Par défaut, triez par nom du fichier
+        images_data = mongo.db.images.find({"image_path": {"$in": blob_urls}}).sort("image_path", order)
+        print("3")
+
     image_list = []
 
     for image_data in images_data:
