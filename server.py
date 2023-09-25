@@ -130,7 +130,6 @@ def search_images():
 @app.route('/upload', methods=['POST'])
 def upload_image():
     image = request.files.get('image')
-    other_field = request.form.get('otherField')
 
     if not image:
         return jsonify({'error': 'No image provided'}), 400
@@ -149,6 +148,9 @@ def upload_image():
     blob_client.upload_blob(image_bytes)
     blob_url = blob_client.url
     
+    # On génère la nouvelle clé primaire
+    new_image_id = increment_image_id()
+
     # On initialise Azure Cognitive Services client
     computervision_client = ComputerVisionClient(
         "https://passionfroid.cognitiveservices.azure.com/",
@@ -164,16 +166,25 @@ def upload_image():
     tags = [tag.name for tag in image_analysis.tags]
     description = image_analysis.description.captions[0].text if image_analysis.description.captions else ""
 
-    # On insert les données dans la base de données
+    # On insert les données dans la base de données avec la nouvelle clé primaire
     data = {
+        '_id': new_image_id,  # Nouvelle clé primaire incrémentée
         'image_path': blob_url,
-        'other_field': other_field,
-        'tags': tags,  # New field for tags
-        'meta_description': description  # Updated with generated description
+        'tags': tags,
+        'meta_description': description
     }
     mongo.db.images.insert_one(data)
 
     return jsonify({'message': 'Success'}), 200
 
+def increment_image_id():
+    # Incrémente la séquence et retourne la nouvelle valeur
+    sequence_doc = mongo.db.counters.find_one_and_update(
+        {'_id': 'images'},
+        {'$inc': {'sequence_value': 1}},
+        upsert=True,
+        return_document=True
+    )
+    return sequence_doc['sequence_value']
 if __name__ == "__main__":
     app.run(debug=True)
