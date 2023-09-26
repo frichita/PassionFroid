@@ -1,23 +1,19 @@
 git clone https://github.com/frichita/PassionFroid.git
 
-pip install -r requirements.txt
+## Creer un fichier .env dans ce répertoire et mettez y ces variables avec les clés de microsoft Azure
 
-## Se mettre dans l'environnement venv 
+# .env (Remplacez le XXXX par les clés adéquates)
 
-python -m venv venv
+## Clé d'acces au conainer azure
+ACCOUNT_KEY=XXXXXXXXXXX
 
- .\venv\Scripts\activate
+## Clé d'inscription du computer vision
+ SUBSCRIPTION_KEY=XXXXXXXXXXXXXX
 
-## Lancer le serveur
+## Clé du computer vision
+ENDPOINT=XXXXXXXXXXx
 
-python server.py
-
-## se placer sur Client pour lancer le react puis lancer la page web
-
-cd client
-
-npm start build
-
-npm run
-
-
+## Puis lancer l'application avec le app.bat :
+## -installer python
+## -installer npm 
+## Ensuite lancer le fichier app.bat
