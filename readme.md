@@ -1,5 +1,10 @@
+git clone https://github.com/frichita/PassionFroid.git
+
+pip install -r requirements.txt
 
 ## Se mettre dans l'environnement venv 
+
+python -m venv venv
 
  .\venv\Scripts\activate
 
